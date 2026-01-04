@@ -167,58 +167,93 @@ function renderBudgetEntry(container) {
     // Get Categories
     const categories = db.getCategories();
     // Helper to build tree (simplified for MVP: just flat list with indentation)
+    const months = [
+        'Ocak', 'Şubat', 'Mart', 'Nisan', 'Mayıs', 'Haziran',
+        'Temmuz', 'Ağustos', 'Eylül', 'Ekim', 'Kasım', 'Aralık'
+    ];
+
+    // Helper to build tree (simplified for MVP: just flat list with indentation)
     const categoryRows = categories.map(cat => {
         const isParent = !cat.parent_id;
-        const style = isParent ? 'font-weight: 700; background: #f8fafc;' : 'padding-left: 2rem;';
+        const style = isParent ? 'font-weight: 700; background: #f8fafc;' : 'padding-left: 1rem; white-space: nowrap;';
+
+        let inputsHtml = '';
+        if (isParent) {
+            inputsHtml = `<td colspan="12"></td>`;
+        } else {
+            inputsHtml = months.map((m, index) => `
+                <td style="padding: 4px;">
+                    <input type="number" 
+                           class="form-control currency-input" 
+                           style="min-width: 80px;"
+                           data-cat-id="${cat.id}" 
+                           data-month="${index}"
+                           placeholder="0" 
+                           onchange="saveEntry('${cat.id}', ${index}, this.value)">
+                </td>
+             `).join('');
+        }
+
         return `
             <tr style="${style}">
-                <td>${cat.code}</td>
-                <td>${cat.name}</td>
-                <td>
-                    ${isParent ? '' : `<input type="number" class="form-control currency-input" data-cat-id="${cat.id}" placeholder="0.00" onchange="saveEntry('${cat.id}', this.value)">`}
-                </td>
+                <td style="position: sticky; left: 0; background: inherit; z-index: 1;">${cat.code}</td>
+                <td style="position: sticky; left: 60px; background: inherit; z-index: 1; min-width: 200px;">${cat.name}</td>
+                ${inputsHtml}
             </tr>
         `;
     }).join('');
 
+    const monthHeaders = months.map(m => `<th style="min-width: 100px;">${m}</th>`).join('');
+
     container.innerHTML = `
         <div class="header">
-            <h1 class="page-title">Bütçe Girişi</h1>
+            <h1 class="page-title">Bütçe Girişi (Yıllık)</h1>
             <div>
                 <span class="badge badge-manager">DRAFT</span>
             </div>
         </div>
-        <div class="card">
-            <table class="data-table">
-                <thead>
-                    <tr>
-                        <th style="width: 100px;">Kod</th>
-                        <th>Hesap Kalemi</th>
-                        <th style="width: 200px;">Tutar (Yerel Para Birimi)</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    ${categoryRows}
-                </tbody>
-            </table>
+        <div class="card" style="padding: 0; overflow: hidden;">
+            <div class="table-responsive" style="overflow-x: auto;">
+                <table class="data-table" style="min-width: 1500px;">
+                    <thead>
+                        <tr>
+                            <th style="width: 60px; position: sticky; left: 0; z-index: 2;">Kod</th>
+                            <th style="min-width: 200px; position: sticky; left: 60px; z-index: 2;">Hesap Kalemi</th>
+                            ${monthHeaders}
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${categoryRows}
+                    </tbody>
+                </table>
+            </div>
         </div>
     `;
 
     // Load existing values
     const myLocation = APP_STATE.user.role === 'LOCATION_MANAGER'
         ? db.getLocationByManager(APP_STATE.user.id)
-        : db.getLocations()[0]; // Admin defaults to first location for demo
+        : db.getLocations()[0];
 
     if (myLocation) {
         const budgets = db.getBudgets(myLocation.id);
         budgets.forEach(b => {
-            const input = document.querySelector(`input[data-cat-id="${b.category_id}"]`);
-            if (input) input.value = b.amount;
+            if (b.monthly_amounts && Array.isArray(b.monthly_amounts)) {
+                b.monthly_amounts.forEach((val, idx) => {
+                    const input = document.querySelector(`input[data-cat-id="${b.category_id}"][data-month="${idx}"]`);
+                    if (input) input.value = val;
+                });
+            } else if (b.amount) {
+                // Legacy: load into first month? Or ignoring as per plan we might have migrated.
+                // If migration in mock_db works, this block might be redundant but safe.
+                const input = document.querySelector(`input[data-cat-id="${b.category_id}"][data-month="0"]`);
+                if (input) input.value = b.amount;
+            }
         });
     }
 }
 
-window.saveEntry = function (catId, value) {
+window.saveEntry = function (catId, monthIndex, value) {
     const myLocation = APP_STATE.user.role === 'LOCATION_MANAGER'
         ? db.getLocationByManager(APP_STATE.user.id)
         : db.getLocations()[0];
@@ -230,25 +265,23 @@ window.saveEntry = function (catId, value) {
 
     const amount = parseFloat(value);
 
-    if (isNaN(amount)) {
+    // Allow empty string to mean 0 or just don't save NaN but user might be clearing input. 
+    // If value is empty string, treat as 0
+    let safeAmount = amount;
+    if (value === '') safeAmount = 0;
+
+    if (isNaN(safeAmount)) {
         alert("Lütfen geçerli bir sayı giriniz.");
-        // Reset input value to previous legitimate state or 0? 
-        // For now just returning to prevent bad data save.
-        // Ideally we would revert the input field UI too, but passing reference is tricky here without event target.
-        // The onchange event in HTML passes 'this.value'. To fix UI, we should pass 'this' instead of value to saveEntry.
-        // But I can't easily change the HTML string generation in renderBudgetEntry in this same chunk comfortably without potentially missing context.
-        // Let's proceed with alert and not saving.
         return;
     }
 
     db.saveBudgetEntry({
         location_id: myLocation.id,
         category_id: catId,
-        amount: amount,
+        month_index: monthIndex,
+        amount: safeAmount,
         notes: ''
     });
-
-    // Visual feedback?
 }
 
 function renderReports(container) {
