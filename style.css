@@ -564,3 +564,43 @@ input:checked+.slider:before {
     -ms-transform: translateX(24px);
     transform: translateX(24px);
 }
+
+/* Hide Spinners for Number Inputs */
+/* Chrome, Safari, Edge, Opera */
+input::-webkit-outer-spin-button,
+input::-webkit-inner-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
+}
+
+/* Firefox */
+input[type=number] {
+    -moz-appearance: textfield;
+}
+
+/* Ensure currency input looks clean */
+.currency-input {
+    text-align: right;
+    font-family: monospace;
+    padding-right: 0.5rem;
+}
+
+/* Hide Spinners for Number Inputs */
+/* Chrome, Safari, Edge, Opera */
+input::-webkit-outer-spin-button,
+input::-webkit-inner-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
+}
+
+/* Firefox */
+input[type=number] {
+    -moz-appearance: textfield;
+}
+
+/* Ensure currency input looks clean */
+.currency-input {
+    text-align: right;
+    font-family: monospace;
+    padding-right: 0.5rem;
+}

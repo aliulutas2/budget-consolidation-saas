@@ -126,8 +126,8 @@ function renderDashboard(container) {
     if (isManager) {
         statsHTML = `
             <div class="card">
-                <h3>Hoşgeldiniz, ${APP_STATE.user.name}</h3>
-                <p>Lütfen sol menüden "Bütçe Girişi" ekranına giderek verilerinizi yükleyiniz.</p>
+                <h3>Welcome, ${APP_STATE.user.name}</h3>
+                <p>Please go to the "Budget Entry" screen from the left menu to upload your data.</p>
             </div>
         `;
     } else {
@@ -139,16 +139,16 @@ function renderDashboard(container) {
         statsHTML = `
             <div class="grid-3" style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 1.5rem; margin-bottom: 2rem;">
                 <div class="card">
-                    <div style="font-size: 0.9rem; color: #64748b;">Toplam Bütçe</div>
-                    <div style="font-size: 2rem; font-weight: 700;">₺${totalBudget.toLocaleString()}</div>
+                    <div style="font-size: 0.9rem; color: #64748b;">Total Budget</div>
+                    <div style="font-size: 2rem; font-weight: 700;">${totalBudget.toLocaleString()}</div>
                 </div>
                 <div class="card">
-                    <div style="font-size: 0.9rem; color: #64748b;">Lokasyon Sayısı</div>
+                    <div style="font-size: 0.9rem; color: #64748b;">Locations Count</div>
                     <div style="font-size: 2rem; font-weight: 700;">${locations.length}</div>
                 </div>
                 <div class="card">
-                    <div style="font-size: 0.9rem; color: #64748b;">Son Güncelleme</div>
-                    <div style="font-size: 1.2rem; font-weight: 500;">Bugün</div>
+                    <div style="font-size: 0.9rem; color: #64748b;">Last Update</div>
+                    <div style="font-size: 1.2rem; font-weight: 500;">Today</div>
                 </div>
             </div>
         `;
@@ -156,8 +156,8 @@ function renderDashboard(container) {
 
     container.innerHTML = `
         <div class="header">
-            <h1 class="page-title">Genel Bakış</h1>
-            <button class="btn btn-primary" onclick="loadPage('entry')">+ Yeni Giriş</button>
+            <h1 class="page-title">Dashboard</h1>
+            <button class="btn btn-primary" onclick="loadPage('entry')">+ New Entry</button>
         </div>
         ${statsHTML}
     `;
@@ -168,8 +168,8 @@ function renderBudgetEntry(container) {
     const categories = db.getCategories();
     // Helper to build tree (simplified for MVP: just flat list with indentation)
     const months = [
-        'Ocak', 'Şubat', 'Mart', 'Nisan', 'Mayıs', 'Haziran',
-        'Temmuz', 'Ağustos', 'Eylül', 'Ekim', 'Kasım', 'Aralık'
+        'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
+        'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'
     ];
 
     // Helper to build tree (simplified for MVP: just flat list with indentation)
@@ -178,8 +178,10 @@ function renderBudgetEntry(container) {
         const style = isParent ? 'font-weight: 700; background: #f8fafc;' : 'padding-left: 1rem; white-space: nowrap;';
 
         let inputsHtml = '';
+        let totalVal = 0; // Initial placeholder, will be calc on load
+
         if (isParent) {
-            inputsHtml = `<td colspan="12"></td>`;
+            inputsHtml = `<td colspan="13"></td>`;
         } else {
             inputsHtml = months.map((m, index) => `
                 <td style="padding: 4px;">
@@ -189,9 +191,15 @@ function renderBudgetEntry(container) {
                            data-cat-id="${cat.id}" 
                            data-month="${index}"
                            placeholder="0" 
-                           onchange="saveEntry('${cat.id}', ${index}, this.value)">
+                           onchange="saveEntry('${cat.id}', ${index}, this.value); updateTotal('${cat.id}')"
+                           onkeyup="updateTotal('${cat.id}')">
                 </td>
              `).join('');
+            inputsHtml += `
+                <td style="padding: 4px; font-weight: bold; text-align: right; background: #f8fafc;">
+                    <span id="total-${cat.id}">0</span>
+                </td>
+             `;
         }
 
         return `
@@ -207,19 +215,20 @@ function renderBudgetEntry(container) {
 
     container.innerHTML = `
         <div class="header">
-            <h1 class="page-title">Bütçe Girişi (Yıllık)</h1>
+            <h1 class="page-title">Budget Entry (Annual)</h1>
             <div>
                 <span class="badge badge-manager">DRAFT</span>
             </div>
         </div>
         <div class="card" style="padding: 0; overflow: hidden;">
             <div class="table-responsive" style="overflow-x: auto;">
-                <table class="data-table" style="min-width: 1500px;">
+                <table class="data-table" style="min-width: 1600px;">
                     <thead>
                         <tr>
-                            <th style="width: 60px; position: sticky; left: 0; z-index: 2;">Kod</th>
-                            <th style="min-width: 200px; position: sticky; left: 60px; z-index: 2;">Hesap Kalemi</th>
+                            <th style="width: 60px; position: sticky; left: 0; z-index: 2;">Code</th>
+                            <th style="min-width: 200px; position: sticky; left: 60px; z-index: 2;">Budget Item</th>
                             ${monthHeaders}
+                            <th style="min-width: 120px; font-weight: 800;">Total</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -243,11 +252,12 @@ function renderBudgetEntry(container) {
                     const input = document.querySelector(`input[data-cat-id="${b.category_id}"][data-month="${idx}"]`);
                     if (input) input.value = val;
                 });
+                updateTotal(b.category_id); // Calc total after loading
             } else if (b.amount) {
-                // Legacy: load into first month? Or ignoring as per plan we might have migrated.
-                // If migration in mock_db works, this block might be redundant but safe.
+                // Legacy
                 const input = document.querySelector(`input[data-cat-id="${b.category_id}"][data-month="0"]`);
                 if (input) input.value = b.amount;
+                updateTotal(b.category_id);
             }
         });
     }
@@ -259,7 +269,7 @@ window.saveEntry = function (catId, monthIndex, value) {
         : db.getLocations()[0];
 
     if (!myLocation) {
-        alert("Bir lokasyona atanmamışsınız.");
+        alert("You are not assigned to a location.");
         return;
     }
 
@@ -271,7 +281,7 @@ window.saveEntry = function (catId, monthIndex, value) {
     if (value === '') safeAmount = 0;
 
     if (isNaN(safeAmount)) {
-        alert("Lütfen geçerli bir sayı giriniz.");
+        alert("Please enter a valid number.");
         return;
     }
 
@@ -284,6 +294,23 @@ window.saveEntry = function (catId, monthIndex, value) {
     });
 }
 
+window.updateTotal = function (catId) {
+    const inputs = document.querySelectorAll(`input[data-cat-id="${catId}"]`);
+    let sum = 0;
+    inputs.forEach(input => {
+        sum += parseFloat(input.value) || 0;
+    });
+
+    // User requested locale specific formatting
+    const formatted = sum.toLocaleString(undefined, {
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2
+    });
+
+    const totalEl = document.getElementById(`total-${catId}`);
+    if (totalEl) totalEl.innerText = formatted;
+}
+
 function renderReports(container) {
     const report = db.getConsolidatedReport();
 
@@ -291,22 +318,22 @@ function renderReports(container) {
         <tr>
             <td>${r.category_code}</td>
             <td>${r.category_name}</td>
-            <td style="text-align: right;">₺${r.total_amount.toLocaleString()}</td>
+            <td style="text-align: right;">${r.total_amount.toLocaleString()}</td>
         </tr>
     `).join('');
 
     container.innerHTML = `
         <div class="header">
-            <h1 class="page-title">Konsolide Rapor</h1>
-            <button class="btn btn-secondary">Excel İndir</button>
+            <h1 class="page-title">Consolidated Report</h1>
+            <button class="btn btn-secondary">Download Excel</button>
         </div>
         <div class="card">
             <table class="data-table">
                 <thead>
                     <tr>
-                        <th>Kod</th>
-                        <th>Hesap Kalemi</th>
-                        <th style="text-align: right;">Toplam Tutar</th>
+                        <th>Code</th>
+                        <th>Budget Item</th>
+                        <th style="text-align: right;">Total Amount</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -320,31 +347,31 @@ function renderReports(container) {
 function renderSettings(container) {
     container.innerHTML = `
         <div class="header">
-            <h1 class="page-title">Ayarlar</h1>
+            <h1 class="page-title">Settings</h1>
         </div>
         
         <div class="card">
-            <h3>Profil Ayarları</h3>
+            <h3>Profile Settings</h3>
             <div class="form-group" style="margin-top: 1rem;">
-                <label class="form-label">Ad Soyad</label>
+                <label class="form-label">Full Name</label>
                 <input type="text" class="form-control" value="${APP_STATE.user.name}" readonly>
             </div>
             <div class="form-group">
-                <label class="form-label">E-posta</label>
+                <label class="form-label">Email</label>
                 <input type="email" class="form-control" value="${APP_STATE.user.email}" readonly>
             </div>
              <div class="form-group">
-                <label class="form-label">Rol</label>
+                <label class="form-label">Role</label>
                 <input type="text" class="form-control" value="${APP_STATE.user.role}" readonly>
             </div>
         </div>
 
         <div class="card">
-            <h3>Uygulama Tercihleri</h3>
+            <h3>App Preferences</h3>
             <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 1rem;">
                 <div>
-                    <div style="font-weight: 500;">Karanlık Mod</div>
-                    <div style="font-size: 0.8rem; color: #64748b;">Arayüzü koyu temaya geçir.</div>
+                    <div style="font-weight: 500;">Dark Mode</div>
+                    <div style="font-size: 0.8rem; color: #64748b;">Switch interface to dark theme.</div>
                 </div>
                 <label class="switch">
                     <input type="checkbox" onclick="toggleTheme()">
@@ -353,8 +380,8 @@ function renderSettings(container) {
             </div>
             <div style="display: flex; align-items: center; justify-content: space-between;">
                 <div>
-                    <div style="font-weight: 500;">Bildirimler</div>
-                    <div style="font-size: 0.8rem; color: #64748b;">E-posta bildirimlerini al.</div>
+                    <div style="font-weight: 500;">Notifications</div>
+                    <div style="font-size: 0.8rem; color: #64748b;">Receive email notifications.</div>
                 </div>
                 <label class="switch">
                     <input type="checkbox" checked>
