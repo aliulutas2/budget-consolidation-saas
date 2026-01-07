@@ -1,14 +1,24 @@
 'use client';
 
-import { db, ConsolidatedReportItem } from '@/app/lib/store';
 import { useEffect, useState } from 'react';
+import { getConsolidatedReport } from '@/app/actions/budget';
+
+// Define local interface to avoid serialization issues
+interface ReportItem {
+    category_code: string;
+    category_name: string;
+    total_amount: number;
+}
 
 export default function ReportsPage() {
-    const [report, setReport] = useState<ConsolidatedReportItem[]>([]);
+    const [report, setReport] = useState<ReportItem[]>([]);
 
     useEffect(() => {
-        // In a real app this might be async/server side, but with MockDB it's direct
-        setReport(db.getConsolidatedReport());
+        async function load() {
+            const data = await getConsolidatedReport();
+            setReport(data);
+        }
+        load();
     }, []);
 
     return (

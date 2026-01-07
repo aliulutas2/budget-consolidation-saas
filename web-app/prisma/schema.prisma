@@ -1,0 +1,64 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("POSTGRES_PRISMA_URL") // Uses Vercel's standard env var
+  directUrl = env("POSTGRES_URL_NON_POOLING") // For migrations
+}
+
+model User {
+  id        String   @id @default(cuid())
+  email     String   @unique
+  password  String   // In a real app this should be hashed
+  name      String
+  role      String   // 'ADMIN' | 'LOCATION_MANAGER'
+  createdAt DateTime @default(now())
+
+  managedLocations Location[]
+}
+
+model Location {
+  id        String   @id @default(cuid())
+  name      String
+  currency  String
+  managerId String?
+  manager   User?    @relation(fields: [managerId], references: [id])
+  budgets   Budget[]
+}
+
+model Category {
+  id        String   @id @default(cuid())
+  code      String
+  name      String
+  type      String?  // 'INCOME', 'EXPENSE', etc.
+  parentId  String?
+  parent    Category? @relation("CategoryHierarchy", fields: [parentId], references: [id])
+  children  Category[] @relation("CategoryHierarchy")
+  budgets   Budget[]
+}
+
+model Budget {
+  id             String   @id @default(cuid())
+  locationId     String
+  location       Location @relation(fields: [locationId], references: [id])
+  categoryId     String
+  category       Category @relation(fields: [categoryId], references: [id])
+  
+  // Store monthly amounts as an array of decimals or floats
+  monthlyAmounts Decimal[] @default([]) 
+  // Note: Decimal[] in Postgres is supported by Prisma. 
+  // Alternatively we could use complex JSON or 12 separate fields, but array is cleanest if supported.
+  // Actually, standard array of floats is easier for this MVP level.
+  // Let's use Float for simplicity in "Mock" replacement, though Decimal is better for money.
+  // Postgres supports "double precision[]".
+  
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@unique([locationId, categoryId]) 
+}

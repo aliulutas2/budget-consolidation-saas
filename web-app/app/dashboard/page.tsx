@@ -1,9 +1,9 @@
 'use client';
 
 import { useAuth } from '../context/AuthContext';
-import { db } from '../lib/store';
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
+import { getLocations, getConsolidatedReport } from '../actions/budget';
 
 export default function DashboardPage() {
     const { user } = useAuth();
@@ -13,16 +13,21 @@ export default function DashboardPage() {
     });
 
     useEffect(() => {
-        // Calculate basic stats for admin view
-        if (user?.role === 'ADMIN') {
-            const locations = db.getLocations();
-            const report = db.getConsolidatedReport();
-            const totalBudget = report.reduce((sum, r) => sum + r.total_amount, 0);
-            setStats({
-                totalBudget,
-                locationsCount: locations.length
-            });
+        async function loadStats() {
+            if (user?.role === 'ADMIN') {
+                const locations = await getLocations();
+                const report = await getConsolidatedReport();
+                // Note: report items from action might differ slightly in type structure locally vs server serialized
+                // but for total amount it's fine.
+                const totalBudget = report.reduce((sum: number, r: any) => sum + r.total_amount, 0);
+
+                setStats({
+                    totalBudget,
+                    locationsCount: locations.length
+                });
+            }
         }
+        loadStats();
     }, [user]);
 
     if (!user) return null;

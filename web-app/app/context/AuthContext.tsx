@@ -1,8 +1,15 @@
 'use client';
 
 import React, { createContext, useContext, useState, useEffect } from 'react';
-import { db, User } from '@/app/lib/store';
 import { useRouter } from 'next/navigation';
+import { loginUser, logoutUser, getSession } from '../actions/auth';
+
+interface User {
+    id: string;
+    email: string;
+    name: string;
+    role: string;
+}
 
 interface AuthContextType {
     user: User | null;
@@ -19,16 +26,20 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const router = useRouter();
 
     useEffect(() => {
-        // Check session on mount
-        const currentUser = db.getCurrentUser();
-        if (currentUser) {
-            setUser(currentUser);
-        }
-        setLoading(false);
+        // Check session on mount via Server Action
+        checkSession();
     }, []);
 
+    const checkSession = async () => {
+        const sessionUser = await getSession();
+        if (sessionUser) {
+            setUser(sessionUser);
+        }
+        setLoading(false);
+    };
+
     const login = async (email: string, pass: string) => {
-        const result = await db.login(email, pass);
+        const result = await loginUser(email, pass);
         if (result.success && result.user) {
             setUser(result.user);
             router.push('/dashboard');
@@ -36,11 +47,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         return result;
     };
 
-    const logout = () => {
-        db.logout();
+    const logout = async () => {
+        await logoutUser();
         setUser(null);
-        router.push('/'); // Go to landing page
-        router.refresh(); // Ensure state cleans up
+        router.push('/');
+        router.refresh();
     };
 
     return (

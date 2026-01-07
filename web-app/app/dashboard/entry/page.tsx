@@ -1,8 +1,16 @@
 'use client';
 
 import { useAuth } from '@/app/context/AuthContext';
-import { db, Category } from '@/app/lib/store';
 import { useState, useEffect } from 'react';
+import { getCategories, getLocationByManager, getBudgets, getLocations, saveBudgetEntry } from '@/app/actions/budget';
+
+// Define minimal interfaces for local state since we don't import strict types from server actions usually
+interface Category {
+    id: string;
+    code: string;
+    name: string;
+    parentId: string | null;
+}
 
 const MONTHS = [
     'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
@@ -19,39 +27,47 @@ export default function BudgetEntryPage() {
     useEffect(() => {
         if (!user) return;
 
-        // Load Location
-        let myLocation = null;
-        if (user.role === 'LOCATION_MANAGER') {
-            myLocation = db.getLocationByManager(user.id);
-        } else {
-            // Admin fallback - pick first location for demo
-            myLocation = db.getLocations()[0];
+        async function loadData() {
+            // Load Location
+            let myLocation = null;
+            if (user?.role === 'LOCATION_MANAGER') {
+                myLocation = await getLocationByManager(user.id);
+            } else {
+                // Admin fallback - pick first location for demo
+                const locs = await getLocations();
+                if (locs.length > 0) myLocation = locs[0];
+            }
+
+            if (myLocation) {
+                setLocationId(myLocation.id);
+                const savedBudgets = await getBudgets(myLocation.id);
+
+                // Transform array to map for easy lookup
+                const map: Record<string, number[]> = {};
+                savedBudgets.forEach((b: any) => {
+                    // b.monthlyAmounts comes as array of Decimals/numbers
+                    // Server action serialization might return them as strings or numbers
+                    if (b.monthlyAmounts) {
+                        map[b.categoryId] = b.monthlyAmounts.map((v: any) => Number(v));
+                    }
+                });
+                setBudgetMap(map);
+            }
+
+            const cats = await getCategories();
+            setCategories(cats);
+            setLoading(false);
         }
 
-        if (myLocation) {
-            setLocationId(myLocation.id);
-            const savedBudgets = db.getBudgets(myLocation.id);
-
-            // Transform array to map for easy lookup
-            const map: Record<string, number[]> = {};
-            savedBudgets.forEach(b => {
-                if (b.monthly_amounts) {
-                    map[b.category_id] = b.monthly_amounts;
-                }
-            });
-            setBudgetMap(map);
-        }
-
-        setCategories(db.getCategories());
-        setLoading(false);
+        loadData();
     }, [user]);
 
-    const handleInputChange = (catId: string, monthIndex: number, val: string) => {
+    const handleInputChange = async (catId: string, monthIndex: number, val: string) => {
         if (!locationId) return;
 
         const numVal = parseFloat(val) || 0;
 
-        // Update Local State
+        // Update Local State Optimistically
         const currentAmounts = budgetMap[catId] ? [...budgetMap[catId]] : new Array(12).fill(0);
         currentAmounts[monthIndex] = numVal;
 
@@ -60,11 +76,11 @@ export default function BudgetEntryPage() {
             [catId]: currentAmounts
         }));
 
-        // Persist to DB (Debounce could be added here in real app)
-        db.saveBudgetEntry({
-            location_id: locationId,
-            category_id: catId,
-            month_index: monthIndex,
+        // Persist to DB
+        await saveBudgetEntry({
+            locationId: locationId,
+            categoryId: catId,
+            monthIndex: monthIndex,
             amount: numVal
         });
     };
@@ -100,7 +116,7 @@ export default function BudgetEntryPage() {
                         </thead>
                         <tbody>
                             {categories.map(cat => {
-                                const isParent = !cat.parent_id;
+                                const isParent = !cat.parentId;
                                 const rowStyle: React.CSSProperties = isParent
                                     ? { fontWeight: 700, background: '#f8fafc' }
                                     : {};
