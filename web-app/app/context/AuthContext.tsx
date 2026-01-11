@@ -2,7 +2,8 @@
 
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { loginUser, logoutUser, getSession } from '../actions/auth';
+// Server Actions disabled for static export
+// import { loginUser, logoutUser, getSession } from '../actions/auth';
 
 interface User {
     id: string;
@@ -22,36 +23,21 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
     const [user, setUser] = useState<User | null>(null);
-    const [loading, setLoading] = useState(true);
+    const [loading, setLoading] = useState(false); // No loading for static
     const router = useRouter();
 
     useEffect(() => {
-        // Check session on mount via Server Action
-        checkSession();
+        // Static export - no server session check
     }, []);
 
-    const checkSession = async () => {
-        const sessionUser = await getSession();
-        if (sessionUser) {
-            setUser(sessionUser);
-        }
-        setLoading(false);
-    };
-
     const login = async (email: string, pass: string) => {
-        const result = await loginUser(email, pass);
-        if (result.success && result.user) {
-            setUser(result.user);
-            router.push('/dashboard');
-        }
-        return result;
+        console.warn("Auth disabled on static site");
+        return { success: false, message: 'Authentication available in full version only.' };
     };
 
     const logout = async () => {
-        await logoutUser();
         setUser(null);
         router.push('/');
-        router.refresh();
     };
 
     return (
